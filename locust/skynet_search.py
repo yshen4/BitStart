@@ -1,10 +1,6 @@
-rom locust import HttpLocust, TaskSet, task
+from locust import HttpLocust, TaskSet, task
   
 class SkynetTasks(TaskSet):
-    def __init__(self, url):
-        super(self, TaskSet).__init__()
-        self.url = url
-
     def on_start(self):
         pass
 
@@ -19,6 +15,7 @@ class SkynetTasks(TaskSet):
              })
 
 class SkynetUser(HttpLocust):
-    task_set - SkynetTasks
+    task_set = SkynetTasks
+    host = 'https://www.video110.cn:8030' 
     min_wait = 5000
     max_wait = 15000
