@@ -46,8 +46,16 @@ class SkynetSearchUser(HttpLocust):
 
 '''
 #可以从同一个文件同时跑多个locust用户： 
-#locust -f skynet_search.py SkynetSearchUser SkynetAdminUser
+locust -f skynet_search.py SkynetSearchUser SkynetAdminUser
 
 class SkynetAdminUser:
     pass
+
+#Run multiple locust instances
+
+locust -f skynet_search.py --master --master-bind-port 5557
+locust -f skynet_search.py --slave --master-port 5557
+locust -f skynet_search.py --slave --master-port 5557
+locust -f skynet_search.py --slave --master-port 5557
+
 '''
