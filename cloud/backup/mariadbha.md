@@ -197,6 +197,7 @@ bucket.Upload(ctx, "mariadb-ha-backup/backup.tar.gz", file)
                                     └─────────────────────────────────────┘
 ```
 
+### Cloud provider
 The interface defines cloud backup interface:
 ```go
 // BackupStorage defines the interface for cloud storage operations.
@@ -278,3 +279,102 @@ func (s *AWSBackupStorage) Provider() string {
 	return "aws"
 }
 ```
+
+### Factory to create cloud provider
+```go
+// Config holds the cloud provider configuration parsed from environment variables.
+type Config struct {
+	CloudProvider string `env:"CLOUD_PROVIDER" envDefault:"aws"`
+
+	// AWS configuration
+	AWS AWSConfig
+
+	// Azure configuration
+	Azure AzureConfig
+
+	// GCP configuration
+	GCP GCPConfig
+}
+
+// NewBackupStorage creates a BackupStorage implementation based on the CLOUD_PROVIDER env var.
+// This is the factory function that returns the appropriate implementation.
+func NewBackupStorage(logger *zerolog.Logger) (BackupStorage, error) {
+	var cfg Config
+	if err := env.Parse(&cfg); err != nil {
+		return nil, fmt.Errorf("error processing cloud environment variables: %v", err)
+	}
+
+	switch cfg.CloudProvider {
+	case "aws":
+		return NewAWSBackupStorage(cfg.AWS, logger)
+	case "azure":
+		return NewAzureBackupStorage(cfg.Azure, logger)
+	case "gcp":
+		return NewGCPBackupStorage(cfg.GCP, logger)
+	default:
+		return nil, fmt.Errorf("unknown cloud provider: %s", cfg.CloudProvider)
+	}
+}
+```
+
+### Backup for MariaDB HA
+```go
+type mariaDBHABackup struct {
+	Job
+
+	clientSet     *kubernetes.Clientset
+	logger        zerolog.Logger
+	cfg           *MariaDBHAConfig
+	backupStorage cloud.BackupStorage
+}
+
+func NewMariaDBHABackup(clientSet *kubernetes.Clientset, logger *zerolog.Logger, backupStorage cloud.BackupStorage) (*mariaDBHABackup, error) {
+	var cfg MariaDBHAConfig
+	env.Parse(&cfg)
+
+	return &mariaDBHABackup{
+		clientSet:     clientSet,
+		logger:        logger.With().Str("job", mariaDBHABackupJobName).Logger(),
+		cfg:           &cfg,
+		backupStorage: backupStorage,
+	}, nil
+}
+
+func (m *mariaDBHABackup) Run(ctx context.Context) error {
+	// Fetch MariaDB password from Kubernetes secret
+	secret, _ := m.clientSet.CoreV1().Secrets(m.cfg.CellDefaultNamespace).Get(ctx, m.cfg.MariaDBSecretName, metav1.GetOptions{})
+	password := string(secret.Data[m.cfg.MariaDBRootPasswordKey])
+
+	// Create temporary directories for backup
+	tempPath, _ := os.MkdirTemp("", "backup-ha-*")
+	defer os.RemoveAll(tempPath)
+
+	// Perform backup
+	dumpPath := filepath.Join(tempPath, mariaDBHABackupJobName)
+	os.Mkdir(dumpPath, 0755)
+	dumpFile := filepath.Join(dumpPath, "all-databases-dump.sql")
+	cmd := exec.Command(
+		"mariadb-dump",
+		fmt.Sprintf("--host=%s", m.cfg.MariaDBServiceName),
+		fmt.Sprintf("--port=%d", m.cfg.MariaDBPort),
+		fmt.Sprintf("--user=%s", m.cfg.MariaDBUserKey),
+		fmt.Sprintf("--password=%s", password),
+		"--single-transaction",
+		"--events",
+		"--routines",
+		"--all-databases",
+		"--skip-add-locks",
+		"--ignore-table=mysql.global_priv",
+		fmt.Sprintf("--result-file=%s", dumpFile),
+	)
+	cmd.Run()
+	compressedBackupFiles, _ := utils.CompressBackup(tempPath, mariaDBHABackupJobName)
+
+	// Upload backup to cloud storage
+	for _, backupFile := range compressedBackupFiles {
+		m.backupStorage.UploadBackup(ctx, backupFile, mariaDBHABackupJobName)
+	}
+	return nil
+}
+```
+
