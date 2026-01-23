@@ -2,7 +2,7 @@
 In this document, we discuss the architecture how to provision cloud (AWS/GCP/Azure) resources for Kubernetes cluster. The main goal is to under how to support BYOC cluster with control plance.
 
 ## Architecture Overview
-We use a control plane + deployer services architecture with Terraform as the infrastructure-as-code engine to provision AWS resources.
+We use a control plane + deployer services architecture with Terraform as the infrastructure-as-code engine to provision AWS resources. The control plane manages entity lifecycle and orchestrates provisioning, and each cloud service (e.g., cloud-network-service, cloud-k8s-service) receives tasks and executes terraform. 
 
 ```yaml
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -121,7 +121,136 @@ func (ks *KubernetesService) CreateUpdate(ctx context.Context, req *deployer.Kub
 }
 ```
 
-### Provisioning Flow for AWS Kubernetes
+#### 4 Terraform Stack & Driver (Execution Engine)
+The utils/terraform package provides the abstraction for running terraform:
+```go
+type Driver interface {
+	Apply(context.Context) error
+	Destroy(context.Context) error
+	Output(context.Context) ([]byte, error)
+	Plan(ctx context.Context, planUID string) ([]byte, error)
+	Close() error
+}
+```
+The execution flow in the driver is as follows:
+```go
+func (d *driver) Apply(ctx context.Context) error {
+	args := []string{"apply", "-auto-approve", "-input=false"}
+	if !d.opts.Colorize {
+		args = append(args, "-no-color")
+	}
+	args = append(args, d.opts.VarArgs...)
+	cmd := buildTerraformCmd(ctx, d.opts, args...)
+	return d.initAndCommand(ctx, cmd)
+}
+```
+Where initAndCommand runs terraform init first, then the actual command:
+```go
+func (d *driver) initAndCommand(ctx context.Context, cmd *exec.Cmd) error {
+	if err := d.init(ctx); err != nil {
+		return err
+	}
+	return runTerraformCmd(ctx, d.opts, cmd)
+}
+```
+
+#### 5 Terraform Configuration Management
+Terraform configs are organized by cloud type and infra version:
+```yaml
+cloud-network-service/terraform/
+├── aws/
+│   ├── v2.0.0/
+│   ├── v2.1.0/
+│   ├── v2.2.0/
+│   └── v2.3.0/
+├── azure/
+│   └── v2.0.0/ ... v3.0.0/
+└── gcp/
+    └── v2.2.0/
+```
+The TFConfigs struct maps entity cloud type and version to the correct terraform binary and config path:
+```go
+func (tfc *TFConfigs) PathArgs(cloud entity.CloudType,
+	currInfraVersion string) (*TFPathArgs, error) {
+	// ... determines infra version and terraform version
+	return &TFPathArgs{
+		TFPath:       filepath.Join(tfc.TFBinDir, tfBinary),        // e.g., terraform-v1.8.3
+		TFConfigPath: filepath.Join(tfc.TFConfigDir, cloudName, infraVersion), // e.g., aws/v2.3.0
+		InfraVersion: infraVersion,
+		TFVersion:    tfVersion,
+	}, nil
+}
+```
+
+### Provisioning workflow for AWS Kubernetes
+The general workflow is as follows:
+```yaml
+┌─────────────────┐     ┌──────────────────┐     ┌───────────────────┐
+│   Controlplane  │────▶│   Task Manager   │────▶│  Cloud Service    │
+│   Controller    │     │   (GetTasks)     │     │  (k8s/network/..) │
+└─────────────────┘     └──────────────────┘     └───────────────────┘
+        │                                                 │
+        │ Creates tasks for                               │
+        │ entity state changes                            ▼
+        │                                        ┌───────────────────┐
+        │                                        │  TF Stack/Driver  │
+        │                                        │  - init           │
+        │                                        │  - apply/destroy  │
+        │                                        │  - output         │
+        │                                        └───────────────────┘
+        │                                                 │
+        │                                                 ▼
+        │                                        ┌───────────────────┐
+        │                                        │  TF Provider      │
+        │                                        │  - VarArgs()      │
+        │                                        │  - BackendArgs()  │
+        │                                        │  - EnvArgs()      │
+        │                                        └───────────────────┘
+        │                                                 │
+        │                                                 ▼
+        │                                        ┌───────────────────┐
+        │                                        │  Terraform CLI    │
+        │                                        │  exec.Command()   │
+        │                                        └───────────────────┘
+        │                                                 │
+        │                                                 ▼
+        │                                        ┌───────────────────┐
+        ▼                                        │  .tf files        │
+┌─────────────────┐                              │  (aws/v2.3.0/...) │
+│ Update entity   │◀─────────────────────────────│  + state backend  │
+│ status in DB    │        Output parsed         └───────────────────┘
+└─────────────────┘
+```
+
+Each cloud (AWS/Azure/GCP) has a provider that implements: 
+```go
+type ArgsProvider[E Entity] interface {
+	ProviderBackend
+	VarArgsProvider[E]
+}
+
+type Provider[E Entity, ES EntityStatus] interface {
+	ArgsProvider[E]
+	StatusUnmarshaler[E, ES]
+}
+
+type VarArgsProvider[E Entity] interface {
+	VarArgs(E) ([]string, error)
+	CredentialVarArgs(ctx context.Context, access *entity.CloudAccess, entityId string) ([]string, error)
+}
+```
+For example, AWS implements VarArgs for network:
+```go
+func (p *tfProvider) VarArgs(network *entity.Network) ([]string, error) {
+	// ... converts entity fields to terraform variables
+	return []string{
+		common.JoinWithEquals(tfaws.VarAwsRegion, network.Spec.Region),
+		common.JoinWithEquals(tfaws.VarAwsVpcName, network.Metadata.Name),
+		common.JoinWithEquals(tfaws.VarAwsCidrRange, network.Spec.Cidr),
+		// ... more variables
+	}, nil
+}
+```
 
 #### 1: Network (VPC) Provisioning
 The cloud-network-service provisions the underlying VPC infrastructure first:
