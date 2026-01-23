@@ -340,3 +340,59 @@ func InstallAddOns(ctx context.Context, result AwsTfOutput, credentials *entity.
 	podIdentityClient.ConfigurePodIdentities(ctx)
 }
 ```
+## Cloud credential for Terraform provisining
+
+```yaml
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            CREDENTIAL FLOW                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────┐       ┌───────────────┐       ┌─────────────────────┐
+│  Controlplane │──────▶│  Task Queue   │──────▶│  Deployer Service   │
+│  Controller   │       │               │       │  (cloud-k8s-service)│
+└───────────────┘       └───────────────┘       └─────────────────────┘
+        │                                                │
+        │ CloudAccess {                                  │ CredentialVarArgs()
+        │   Cloud: AWS                                   │
+        │   AccountEntityUid: "acc-xyz"                  ▼
+        │ }                                      ┌─────────────────────┐
+        │                                        │  Token Service      │
+        │                                        │  GenerateAccess()   │
+        └────────────────────────────────────────│                     │
+                                                 └─────────────────────┘
+                                                          │
+                              ┌────────────────────────────┴───────────────────┐
+                              │                                                │
+                              ▼                                                ▼
+                    ┌───────────────────┐                           ┌───────────────────┐
+                    │ Stored Credentials│                           │ IAM Role + ExtID  │
+                    │ GenerateSession() │                           │ AssumeRole()      │
+                    └───────────────────┘                           └───────────────────┘
+                              │                                                │
+                              └────────────────────────┬───────────────────────┘
+                                                       │
+                                                       ▼
+                                            ┌───────────────────────┐
+                                            │ Temporary Credentials │
+                                            │ - AccessKeyId         │
+                                            │ - SecretAccessKey     │
+                                            │ - SessionToken        │
+                                            └───────────────────────┘
+                                                       │
+                                                       ▼
+                                            ┌───────────────────────┐
+                                            │ ~/.aws/credentials    │
+                                            │ [provider-profile-xyz]│
+                                            │ aws_access_key_id=... │
+                                            │ aws_secret_access_key=│
+                                            │ aws_session_token=... │
+                                            └───────────────────────┘
+                                                       │
+                                                       ▼
+                                            ┌───────────────────────┐
+                                            │ Terraform             │
+                                            │ -var=provider_profile │
+                                            │  _name=provider-      │
+                                            │  profile-xyz          │
+                                            └───────────────────────┘
+```
