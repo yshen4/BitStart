@@ -1,5 +1,8 @@
 # Bit start
 
+This repository is my note for software development. 
+
 ## Key topics
-1. Cloud
-2. AI tutorials
+1. [Cloud](./cloud/README.md)
+2. [AI tutorials](./ai/README.md)
+3. [Development automation](./automation/README.md)
