@@ -13,7 +13,11 @@ The overall workflow follows:
    └── GCS Bucket → IAM bindings with Workload Identity
 ```
 
-## cloud-network-service - VPC and networking
+## GCP basics
+[Google Cloud Full Course for Beginners](https://youtu.be/lvZk_sc8u5I?si=-cyL7wXqa2-b2pA6)
+[Cloud Computing and GCP Fundamentals](https://www.coursera.org/learn/gcp-professional-architect-cloud-computing-and-gcp-fundamentals)
+
+## GCP network service: VPC and networking
 Network Provisioning uses Terraform: cloud-network-service/terraform/gcp/v2.2.0/01-terraform-network.tf
 
 ### VPC and subnets
@@ -200,6 +204,119 @@ output "static_ips" {
 }
 ```
 
-## cloud-k8s-service - GKE cluster and node pools
+## GCP k8s service: GKE cluster and node pools
 
-## cloud-storage-service - GCS buckets for Pinot deep storage
+Service accounts in GCP and K8s are specialized, non-human identities used by applications and workloads to securely authenticate and access resources.
+
+| Feature          | GCP Service Account (GSA)                         | Kubernetes Service Account (KSA)          | AWS IAM Role                               | AWS Principal                                      |
+|------------------|--------------------------------------------------|-------------------------------------------|---------------------------------------------|---------------------------------------------------|
+| Scope            | Google Cloud Project (Infrastructure)            | Kubernetes Cluster / Namespace             | AWS Account / Resource                      | AWS Account / Resource                            |
+| Authentication  | OAuth2 / JSON Keys                               | Bearer Tokens                              | STS (AssumeRole, Temporary Credentials)     | SigV4 / STS / Federation                          |
+| Primary Use     | Accessing GCP API services (Storage, DBs)        | Accessing Kubernetes API server            | Granting permissions to workloads/services  | Identifying an entity making AWS API requests     |
+
+### Service account
+We create 2 dedicated service accounts, one for the cluster, the other for node pool:
+```terraform
+resource "google_service_account" "cluster" {
+  account_id   = "${var.service_account}-cluster"
+  display_name = "GKE Cluster Service Account"
+}
+
+resource "google_service_account" "node_pool" {
+  account_id   = "${var.service_account}-node-pool"
+  display_name = "GKE Node Pool Service Account"
+}
+```
+
+### Cluster
+Define the variables
+```terraform
+variable "project_id" {
+  description = "The GCP project ID"
+  type        = string
+}
+
+variable "region" {
+  description = "The GCP region for the cluster"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "cluster_name" {
+  description = "The name of the GKE cluster"
+  type        = string
+  default     = "my-gke-cluster"
+}
+
+variable "node_count" {
+  description = "The number of nodes in the node pool"
+  type        = number
+  default     = 1
+}
+
+variable "machine_type" {
+  description = "The machine type for the GKE nodes"
+  type        = string
+  default     = "e2-medium"
+}
+```
+
+```terraform
+#
+#
+# 
+module "gke" {
+  source  = "terraform-google-modules/kubernetes-engine/google"
+  version = "~> 35.0"
+
+  # Basic cluster configuration
+  project_id             = var.project_id
+  name                   = var.cluster_name
+  regional               = var.cluster_type == "regional"
+  region                 = var.region
+  zones                  = var.zones
+  network                = var.network
+  subnetwork             = var.subnetwork
+  
+  # Kubernetes version
+  kubernetes_version     = var.kubernetes_version
+  
+  # Network configuration
+  ip_range_pods          = var.ip_range_pods
+  ip_range_services      = var.ip_range_services
+  default_max_pods_per_node = var.default_max_pods_per_node
+  
+  # Add-ons
+  horizontal_pod_autoscaling = true
+  http_load_balancing        = true
+  
+  # Release channel - UNSPECIFIED to prevent auto-updates
+  release_channel = "UNSPECIFIED"
+  
+  # L4 ILB subsetting for private networks
+  enable_l4_ilb_subsetting = var.enable_l4_ilb_subsetting
+
+  # Node pools - default removed, custom pools created
+  remove_default_node_pool = true
+  node_pools = [
+    {
+      name           = "${var.cluster_name}-preemptible-pool"
+      machine_type   = "e2-medium"
+      preemptible    = true
+      service_account = google_service_account.node_pool.email
+      oauth_scopes = [
+        "https://www.googleapis.com/auth/cloud-platform"
+      ]
+      min_count = 0
+      max_count = 5
+      image_type         = "COS_CONTAINERD"
+      disk_size_gb       = 50
+      autoscaling        = true
+      auto_upgrade       = true
+    }
+  ]
+}
+```
+
+
+## GCP storage service: GCS buckets for Pinot deep storage
