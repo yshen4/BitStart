@@ -16,6 +16,7 @@ The overall workflow follows:
 ## GCP basics
 - [Google Cloud Full Course for Beginners](https://youtu.be/lvZk_sc8u5I?si=-cyL7wXqa2-b2pA6)
 - [Cloud Computing and GCP Fundamentals](https://www.coursera.org/learn/gcp-professional-architect-cloud-computing-and-gcp-fundamentals)
+- [Create GKE Cluster Using Terraform](https://youtu.be/K9IFF9AFnVI?si=DKgW4YK-yXqnswcC)
 
 ## GCP network service: VPC and networking
 Network Provisioning uses Terraform: cloud-network-service/terraform/gcp/v2.2.0/01-terraform-network.tf
