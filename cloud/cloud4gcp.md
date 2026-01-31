@@ -320,3 +320,39 @@ module "gke" {
 
 
 ## GCP storage service: GCS buckets for Pinot deep storage
+```terraform
+variable "gcs_bucket_soft_delete_retention_seconds" {
+  description = "Soft delete retention period for GCS bucket (seconds)"
+  type        = number
+  default     = 2592000 # 30 days
+}
+
+resource "google_storage_bucket" "data_bucket" {
+  name     = "${var.project_id}-data-bucket"
+  project  = var.project_id
+  location = "US"
+  storage_class = "STANDARD"
+  uniform_bucket_level_access = true
+
+  # Soft delete for recovery
+  soft_delete_policy {
+    retention_duration_seconds = var.gcs_bucket_soft_delete_retention_seconds
+  }
+
+  versioning {
+    enabled = true
+  }
+
+  # Delete all versions after 90 days
+  lifecycle_rule {
+    condition {
+      age = 90
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+
+```
