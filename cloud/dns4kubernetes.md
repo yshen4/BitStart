@@ -22,13 +22,8 @@ The workflow can be illustrated as follows:
                           │
                           ▼
               ┌──────────────────────┐
-              │  Backend Services    │ (Pinot, Frontend, etc.)
+              │  Backend Services    │
               └──────────────────────┘
-
-DNS Registration:
-┌─────────────┐    Task    ┌─────────────┐   Route53   ┌─────────────┐
-│ Controlplane│──────────▶│  Cloud-DNS  │────────────▶│ AWS Route53 │
-└─────────────┘            └─────────────┘             └─────────────┘
 ```
 
 ## DNS Registration Workflow
@@ -38,19 +33,6 @@ Architecture:
 
 Here is the workflow:
 ```yaml
-1. Creates DNS Zone
-   └── Creates hosted zone in Route53
-   └── Sets up NS records in parent zone
-   
-2. Generates DNS Record Set entity
-   
-3. Set DNS RecordSets
-   └── Extracts IPs from network status:
-       - AWS: ElbEips / InternalElbIps
-       - Azure: InboundExternalLbIp / InboundInternalLbIp  
-       - GCP: StaticIps / InternalLbIp
-   └── Calls Route53 ChangeResourceRecordSets API
-
 Route53Manager
  ├── CreateHostedZone()
  │    └── create public hosted zone
