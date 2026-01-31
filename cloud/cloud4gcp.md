@@ -356,8 +356,70 @@ resource "google_storage_bucket" "data_bucket" {
   }
 }
 ```
+### Install storage class
+| Storage Class                | Disk Type             | Reclaim Policy | Default           |
+|------------------------------|---------------------|----------------|-----------------|
+| pd-ssd-default               | pd-ssd              | Delete         | Yes             |
+| pd-ssd-retain                | pd-ssd              | Retain         | No              |
+| hyperdisk-balanced-default   | hyperdisk-balanced  | Delete         | No (n4 nodes only) |
+| hyperdisk-balanced-retain    | hyperdisk-balanced  | Retain         | No (n4 nodes only) |
 
-### Workload Identity Binding
+Configure the Kubernetes provider to use the GKE cluster credentials.
+```terraform
+provider "kubernetes" {
+  host                   = google_container_cluster.primary.endpoint
+  token                  = data.google_client_config.current.access_token
+  cluster_ca_certificate = base64decode(google_container_cluster.primary.master_auth.0.cluster_ca_certificate)
+}
+
+# Define the custom StorageClass resource.
+resource "kubernetes_storage_class" "ssd_storage_class" {
+  metadata {
+    name = "ssd-retain-sc"
+    # Optional: Set this to true to make it the default StorageClass for the cluster, 
+    # but ensure no other StorageClass is marked as default first.
+    # annotations = {
+    #   "storageclass.kubernetes.io/is-default-class" = "true"
+    # }
+  }
+  
+  # The provisioner for the GCE Persistent Disk CSI driver
+  storage_provisioner = "pd.csi.storage.gke.io"
+  
+  # Reclaim policy can be "Delete" (default) or "Retain"
+  reclaim_policy      = "Retain"
+
+  # Parameters specific to the provisioner. 
+  # type: specifies the GCE disk type (pd-standard, pd-balanced, pd-ssd, pd-extreme)
+  # fstype: specifies the filesystem type (ext4, xfs)
+  parameters = {
+    type   = "pd-ssd"
+    fstype = "ext4"
+  }
+
+  # Optional: Allows resizing of volumes
+  allow_volume_expansion = true
+
+  # Optional: Mount options for the PVs provisioned with this StorageClass
+  mount_options = ["debug"]
+}
+```
+After applying this Terraform configuration, you can reference the new StorageClass in your PersistentVolumeClaims (PVCs) or StatefulSets by setting the storageClassName field to "ssd-retain-sc". 
+```terraform
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-ssd-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ssd-retain-sc # Reference the name defined in Terraform
+```
+
+## Workload Identity Binding
 We configure Workload Identity to grant a KSA to impersonate a GSA. 
 
 | Item | Explanation |
