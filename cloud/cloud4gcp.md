@@ -358,6 +358,8 @@ resource "google_storage_bucket" "data_bucket" {
 }
 ```
 ### Install storage class
+
+#### Storage class choice
 | Storage Class                | Disk Type             | Reclaim Policy | Default           |
 |------------------------------|---------------------|----------------|-----------------|
 | pd-ssd-default               | pd-ssd              | Delete         | Yes             |
@@ -365,6 +367,59 @@ resource "google_storage_bucket" "data_bucket" {
 | hyperdisk-balanced-default   | hyperdisk-balanced  | Delete         | No (n4 nodes only) |
 | hyperdisk-balanced-retain    | hyperdisk-balanced  | Retain         | No (n4 nodes only) |
 
+It is a common Kubernetes storage best practice that we create 2 storage classes serving different purposes based on data lifecycle requirements:
+1. Use pd-ssd-default for ephemeral/replaceable data
+   - Set as default because most workloads have replaceable data
+   - Used for: caches, temporary storage, stateless apps, dev/test environments
+   - When the PVC is deleted, the disk is cleaned up automatically (no orphaned resources, no extra costs)
+2. Use pd-ssd-retain for critical/persistent data
+   - Non-default to require explicit opt-in for critical data
+   - Used for: databases (Pinot servers, ZooKeeper, MariaDB), important logs, data that needs manual backup before deletion
+   - When the PVC is deleted, the disk survives - allowing:
+     * Manual data recovery
+     * Forensic analysis
+     * Accidental deletion protection
+
+```yaml
+# For database server (critical segment data) - use retain
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-server-data
+spec:
+  storageClassName: pd-ssd-retain  # Explicit opt-in
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 100Gi
+
+# For temporary processing (default behavior)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: temp-processing
+spec:
+  # storageClassName not specified - uses pd-ssd-default
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+#### pd-ssd vs hyperdisk-balanced
+Hyperdisk-balanced storage classes are only installed when the cluster has n4 node types:
+| VM Generation | Supported Disk Types                              | Notes                         | Use Case |
+|---------------|---------------------------------------------------|-------------------------------|----------|
+| n2, e2, c2    | pd-ssd, pd-balanced, pd-standard                  | Traditional Persistent Disks  | General purpose, works everywhere |
+| n4 (newer gen)| pd-ssd, hyperdisk-balanced, hyperdisk-extreme     | Hyperdisk is optimized for n4 | Critical high-performance data on n4 nodes |
+
+In the design, we will provide both:
+1. pd-ssd remains default: Safe, works on all node types in a mixed cluster
+2. hyperdisk-balanced is optional: Available for workloads that:
+   - Run specifically on n4 nodes (via nodeSelector/affinity)
+   - Need higher performance characteristics
+
+#### Define storageClass
 Configure the Kubernetes provider to use the GKE cluster credentials.
 ```terraform
 provider "kubernetes" {
