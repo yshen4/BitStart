@@ -14,8 +14,8 @@ The overall workflow follows:
 ```
 
 ## GCP basics
-[Google Cloud Full Course for Beginners](https://youtu.be/lvZk_sc8u5I?si=-cyL7wXqa2-b2pA6)
-[Cloud Computing and GCP Fundamentals](https://www.coursera.org/learn/gcp-professional-architect-cloud-computing-and-gcp-fundamentals)
+- [Google Cloud Full Course for Beginners](https://youtu.be/lvZk_sc8u5I?si=-cyL7wXqa2-b2pA6)
+- [Cloud Computing and GCP Fundamentals](https://www.coursera.org/learn/gcp-professional-architect-cloud-computing-and-gcp-fundamentals)
 
 ## GCP network service: VPC and networking
 Network Provisioning uses Terraform: cloud-network-service/terraform/gcp/v2.2.0/01-terraform-network.tf
@@ -320,6 +320,8 @@ module "gke" {
 
 
 ## GCP storage service: GCS buckets for Pinot deep storage
+
+### Provision google bucket
 ```terraform
 variable "gcs_bucket_soft_delete_retention_seconds" {
   description = "Soft delete retention period for GCS bucket (seconds)"
@@ -353,6 +355,89 @@ resource "google_storage_bucket" "data_bucket" {
     }
   }
 }
+```
 
+### Workload Identity Binding
+We configure Workload Identity to grant a KSA to impersonate a GSA. 
 
+| Item | Explanation |
+|---|---|
+| **Kubernetes Service Account (KSA)** | The account your pods use in the cluster |
+| **GCP Service Account (GSA)** | The Google account that has IAM permissions to access GCP resources |
+| **Workload Identity Federation (WIF)** | The bridge that allows a KSA to impersonate a GSA |
+
+```yaml
+                +----------------------+
+                |  Kubernetes Pod      |
+                |  (running container) |
+                +----------+-----------+
+                           |
+                           | Uses Service Account
+                           v
+                +----------------------+
+                | Kubernetes SA (KSA)  |
+                +----------+-----------+
+                           |
+                           | Annotated with IAM principal
+                           v
+                +----------------------+
+                | Workload Identity    |
+                | Pool (WIF)          |
+                +----------+-----------+
+                           |
+                           | Federated authentication
+                           v
+                +----------------------+
+                | GCP IAM Principal    |
+                | (roles/container.*)  |
+                +----------+-----------+
+                           |
+                           | Permissions enforced
+                           v
+                +----------------------+
+                | GCP Resources        |
+                | (e.g., GCS Bucket,   |
+                |  GKE cluster, etc.)  |
+                +----------------------+
+```
+
+Step 1: Create service account (see above)
+Step 2: Create the google bucket (see above)
+Step 3: Grant the access
+```terraform
+resource "google_storage_bucket_iam_member" "gsa_bucket_access" {
+  bucket = google_storage_bucket.data_bucket.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.cluster.email}"
+}
+
+```
+Step 4: Map KSA to GSA
+```terraform
+resource "google_service_account_iam_member" "ksa_to_gsa" {
+  service_account = google_service_account.data_bucket.name
+  role            = "roles/iam.workloadIdentityUser"
+  member          = "serviceAccount:${var.project_id}.svc.id.goog[<namespace>/<ksa_name>]"
+}
+```
+
+Step 5: Annotate KSA in Kubernetes
+```
+kubectl annotate serviceaccount <ksa_name> \
+  iam.gke.io/gcp-service-account=<GSA_EMAIL> \
+  -n <namespace>
+```
+
+Step 6: Configure pod to use service account
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+  namespace: <namespace>
+spec:
+  serviceAccountName: <ksa_name>
+  containers:
+  - name: app
+    image: gcr.io/my-project/my-image
 ```
