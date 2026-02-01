@@ -16,9 +16,9 @@ We deploy the backup as Kubernetes CronJob, which can be scheduled daily.
 
 ```yaml
 ┌─────────────────────────────────────────────────────────────┐
-│  CronJob: platform-backup                                   │
+│  CronJob: data-backup                                   │
 │  Schedule: "0 4 * * *" (daily at 4 AM)                     │
-│  Chart: charts/startree-backup                              │
+│  Chart: charts/data-backup                              │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -96,7 +96,7 @@ mariadbHABackUpJob.Run(ctx)
 3: Run mariadb-dump
 ┌────────────────────────────────────────────────────────────┐
 │  mariadb-dump                                              │
-│    --host=startree-mariadb-ha                             │
+│    --host=data-mariadb-ha                             │
 │    --port=3306                                             │
 │    --user=root                                             │
 │    --password=<from-secret>                                │
