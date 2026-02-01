@@ -238,5 +238,69 @@ func ExampleUsage(cfg aws.Config, url String, cfg NetworkConfig) error {
 ```
 
 ## Certificate management
+We study the workflow using cert-manager for certificate management with DNS-01 challenges via AWS Route53. The workflow creates dedicated IAM users with scoped permissions for each DNS zone to allow cert-manager to create DNS TXT records for ACME validation.
+
+There are 2 types of certificates:
+1. Internal certificates (CA-based): internal service-to-service TLS
+2. External Certificates (ACME with DNS-01): validated via DNS-01 challenges against Route53
+
+Here is DNS-01 challenge flow:
+```yaml
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Certificate Request Flow                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Certificate Resource Created
+   │
+   ▼
+┌─────────────────┐
+│  cert-manager   │ ──── Requests certificate from ACME server
+└─────────────────┘
+   │
+   ▼
+2. ACME Server Returns DNS Challenge
+   │  (Create TXT record: _acme-challenge.domain.com)
+   ▼
+┌─────────────────┐      ┌─────────────────┐
+│  cert-manager   │ ───▶ │  AWS Route53    │  Creates TXT record
+└─────────────────┘      └─────────────────┘
+   │                      using IAM credentials
+   │                      from Kubernetes Secret
+   ▼
+3. ACME Server Validates DNS Record
+   │
+   ▼
+4. Certificate Issued → Stored in Kubernetes Secret
+```
+
+Here is the workflow from create DNS zone to certificate use:
+```
+1. DNS Zone Creation (controlplane/pkg/service/dns/zone.go)
+   ├── Create Route53 hosted zone
+   ├── Create NS records in parent zone
+   ├── Create IAM user: cert-manager-<zone-name>
+   ├── Attach IAM policy with Route53 permissions
+   ├── Generate access keys
+   └── Store credentials as Kubernetes Secret (route53)
+
+2. Issuer Deployment (Helm)
+   ├── Deploy Issuer with Route53 DNS-01 solver
+   └── Reference the route53 secret for credentials
+
+3. Certificate Creation (Helm)
+   ├── Create Certificate resource with dnsNames
+   └── Reference the Issuer
+
+4. cert-manager Processing
+   ├── Detect new Certificate resource
+   ├── Request ACME challenge from Let's Encrypt/GCP
+   ├── Create TXT record in Route53 (_acme-challenge.domain)
+   ├── Wait for ACME validation
+   ├── Receive signed certificate
+   └── Store in Kubernetes Secret (external-tls)
+
+5. Traefik Uses Certificate
+   └── IngressRoute references secretName for TLS termination
+```
 
 ## Secrets management
