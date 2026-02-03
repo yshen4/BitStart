@@ -237,6 +237,45 @@ func ExampleUsage(cfg aws.Config, url String, cfg NetworkConfig) error {
 }
 ```
 
+## Load balancer
+Kubernetes core provides Service types, not a full L7 load balancer:
+
+Kuberntes has 4 types of Service, 3 (ClusterIP / NodePort / LoadBalancer) are related to load balancing:
+   A. ClusterIP: Internal-only, L4 (TCP/UDP), no routing, no TLS, no HTTP awareness
+   B. NodePort: Exposes a port on every node, crude, not production-friendly
+   C. LoadBalancer: Asks the cloud provider (AWS/GCP/Azure) to create an external L4 LB, still no HTTP routing, no path-based rules, no middleware
+
+These are transport-level (L4) tools. Kuberntes does not ship an L7 HTTP reverse proxy.
+
+### Traefik
+Traefik is an Ingress Controller, which sits on top of Kubernetes primitives.
+1. Layer 7 (HTTP) routing
+```yaml
+/api  → service A
+/web  → service B
+/     → service C
+```
+2. Ingress = declarative routing: Traefik watches the API server, dynamically reconfigures itself, no reloads, no restarts
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+```
+3. TLS done properly: Traefik handles TLS termination, SNI, Automatic certs (Let’s Encrypt), HTTP → HTTPS redirects
+4. Middleware & traffic shaping: Traefik does Auth (basic, OIDC), Rate limiting, Retries / timeouts, Headers, redirects, rewrites, Canary / weighted routing
+5. Dynamic, cloud-agnostic: Same config on AWS / GCP / on-prem
+
+```yaml
+Internet
+   ↓
+Cloud L4 LoadBalancer (Service type=LoadBalancer)
+   ↓
+Traefik Pods
+   ↓
+ClusterIP Services
+   ↓
+Pods
+```
+
 ## Certificate management
 We study the workflow using cert-manager for certificate management with DNS-01 challenges via AWS Route53. The workflow creates dedicated IAM users with scoped permissions for each DNS zone to allow cert-manager to create DNS TXT records for ACME validation.
 
@@ -304,3 +343,5 @@ Here is the workflow from create DNS zone to certificate use:
 ```
 
 ## Secrets management
+
+
