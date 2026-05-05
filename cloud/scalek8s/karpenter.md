@@ -105,12 +105,10 @@ resource "aws_eks_node_group" "example_ng" {
 }
 ```
 
-## Cluster autoscaler
-
-## In-cluster autoscaling
+## Pod autoscaler
 Kubernetes provides a number of tools to help us manage our application deployment, including scaling.
 
-### Horizontal pod autoscaler
+### Horizontal pod autoscaling
 In Kubernetes, a HorizontalPodAutoscaler (HPA) automatically updates a workload resource (such as a Deployment or StatefulSet), with the aim of automatically scaling capacity to match demand.
 
 HPA respond to increased load by deploying more Pods, which is different from vertical scaling. Kubernetes would mean assigning more resources (for example: memory or CPU) to the Pods that are already running for the workload.
@@ -127,6 +125,23 @@ VPA responds to increased resource demand by assigning more resources (for examp
 If the resource usage decreases, and the Pod resource requests are above optimal levels, the VPA instructs the workload resource (the Deployment, StatefulSet, or other similar resource) to adjust resource requests back down, preventing resource waste.
 
 VPA is implemented as a Kubernetes API resource and a controller. The resource determines the behavior of the controller. VPA controller, running within the Kubernetes data plane, periodically adjusts the resource requests and limits of its target (for example, a Deployment) based on analysis of historical resource utilization, the amount of resources available in the cluster, and real-time events such as out-of-memory (OOM) conditions.
+
+## Node autoscaler
+When the cluster run out of resoruces to schedule a new pod (CPU, memory, or disk), we need node autoscaler.
+
+```mermaid
+graph TD
+    PodMetricAlert[Pod metric alert] --> Controller
+    Controller -->|Schedule a new pod| Scheduler
+    Scheduler -->|Where to place the pod?| Controller
+    Controller -->|No EC2 node has the capacity| NodeScaler
+    NodeScaler -->|Provision new node| Scheduler
+    Scheduler --> NewPod[New pod scheduled]
+```
+
+### Cluster autoscaler
+
+### Karpenter
 
 
 
