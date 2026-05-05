@@ -107,4 +107,26 @@ resource "aws_eks_node_group" "example_ng" {
 
 ## Cluster autoscaler
 
-## 
+## In-cluster autoscaling
+Kubernetes provides a number of tools to help us manage our application deployment, including scaling.
+
+### Horizontal pod autoscaler
+In Kubernetes, a HorizontalPodAutoscaler (HPA) automatically updates a workload resource (such as a Deployment or StatefulSet), with the aim of automatically scaling capacity to match demand.
+
+HPA respond to increased load by deploying more Pods, which is different from vertical scaling. Kubernetes would mean assigning more resources (for example: memory or CPU) to the Pods that are already running for the workload.
+
+If the load decreases, and the number of Pods is above the configured minimum, HPA instructs the workload resource (the Deployment, StatefulSet, or other similar resource) to scale back down. HPA does not apply to objects that can't be scaled (for example: a DaemonSet.)
+
+HPA is implemented as a Kubernetes API resource and a controller. The resource determines the behavior of the controller. The HPA controller, running within the Kubernetes control plane, periodically adjusts the desired scale of its target (for example, a Deployment) to match observed metrics such as average CPU utilization, average memory utilization, or any other custom metric you specify.
+
+### Vertical Pod Autoscaling
+In Kubernetes, a VerticalPodAutoscaler (VPA) automatically updates a workload management resource (such as a Deployment or StatefulSet), with the aim of automatically adjusting infrastructure resource requests and limits to match actual usage.
+
+VPA responds to increased resource demand by assigning more resources (for example: memory or CPU) to the Pods that are already running for the workload. This is also known as rightsizing, or sometimes autopilot. This is different from horizontal scaling, which for Kubernetes would mean deploying more Pods to distribute the load.
+
+If the resource usage decreases, and the Pod resource requests are above optimal levels, the VPA instructs the workload resource (the Deployment, StatefulSet, or other similar resource) to adjust resource requests back down, preventing resource waste.
+
+VPA is implemented as a Kubernetes API resource and a controller. The resource determines the behavior of the controller. VPA controller, running within the Kubernetes data plane, periodically adjusts the resource requests and limits of its target (for example, a Deployment) based on analysis of historical resource utilization, the amount of resources available in the cluster, and real-time events such as out-of-memory (OOM) conditions.
+
+
+
