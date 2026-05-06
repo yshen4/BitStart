@@ -139,9 +139,28 @@ graph TD
     Scheduler --> NewPod[New pod scheduled]
 ```
 
+### Kubernetes pod scheduling mechanisms
+1. Node selectors (based on node label)
+2. Node affinity
+3. Taints and tolerations
+4. Topologyspread
+
 ### Cluster autoscaler
+Cluster autoscaler is a node scaler built on Node group, which is ASG based. Whenever Cluster autoscaler receives a node scaling call, it will find node group to scale, then trigger ASG to scale out a node in node group with EC2 API. This mechanism has several issues:
+1. latency: up to several minutes
+2. rely on node group: whenever a new workload is added (GPU), we need to add node group first.
 
 ### Karpenter
+
+Karpenter is created by AWS, but opensource, which solves 2 problems above:
+1. reduce latency to seconds by call EC2 API directly to add new node;
+2. do not rely on ASG nodegroup, so that it can provision a new node without management overhead.
+
+#### 2 concepts
+1. NodePool
+2. NodeClass: Like AWS EC2 launch template
+
+
 
 
 
