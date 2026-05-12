@@ -106,7 +106,19 @@ resource "aws_eks_node_group" "example_ng" {
 ```
 
 ## Pod autoscaler
-Kubernetes provides a number of tools to help us manage our application deployment, including scaling.
+Kubernetes provides a number of tools to help us manage our application deployment, including Horizontal pod autoscaling (HPA) and Vertical pod autoscaling(VPA).
+
+| Feature      | Horizontal Pod Autoscaler (HPA)                    | Vertical Pod Autoscaler (VPA)                                    |
+| ------------ | -------------------------------------------------- | ---------------------------------------------------------------- |
+| Strategy     | **Scaling Out**: Adds or removes Pod replicas.     | **Scaling Up**: Increases or decreases CPU/RAM of existing Pods. |
+| Core Goal    | Handle throughput and traffic spikes.              | Optimize resource efficiency and “right-size” Pods.              |
+| Installation | Built into Kubernetes by default.                  | Add-on that must be installed separately.                        |
+| Best For     | Stateless apps like web APIs and queue processors. | Stateful apps or jobs where scaling replicas is difficult.       |
+
+> Warning: It is generally not recommended to use HPA and VPA together on the same metrics (like CPU or memory), which can cause a "feedback loop" or "death spiral" where the two autoscalers conflict:
+> 1. VPA might increase a Pod's resources, causing the CPU percentage to drop.
+> 2. HPA sees this drop as "underutilization" and removes replicas, which forces the remaining Pods to work harder, triggering VPA to increase resources again.
+> 3. Exception: We can safely combine them if they use different metrics — for example, using VPA for CPU/Memory optimization and HPA for custom metrics like HTTP request counts
 
 ### Horizontal pod autoscaling
 In Kubernetes, a HorizontalPodAutoscaler (HPA) automatically updates a workload resource (such as a Deployment or StatefulSet), with the aim of automatically scaling capacity to match demand.
@@ -116,6 +128,7 @@ HPA respond to increased load by deploying more Pods, which is different from ve
 If the load decreases, and the number of Pods is above the configured minimum, HPA instructs the workload resource (the Deployment, StatefulSet, or other similar resource) to scale back down. HPA does not apply to objects that can't be scaled (for example: a DaemonSet.)
 
 HPA is implemented as a Kubernetes API resource and a controller. The resource determines the behavior of the controller. The HPA controller, running within the Kubernetes control plane, periodically adjusts the desired scale of its target (for example, a Deployment) to match observed metrics such as average CPU utilization, average memory utilization, or any other custom metric you specify.
+
 
 ### Vertical Pod Autoscaling
 In Kubernetes, a VerticalPodAutoscaler (VPA) automatically updates a workload management resource (such as a Deployment or StatefulSet), with the aim of automatically adjusting infrastructure resource requests and limits to match actual usage.
