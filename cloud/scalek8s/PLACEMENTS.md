@@ -94,10 +94,15 @@ This is heavily used in:
 
 ### Architecture affinity
 
-This tool is used to schedule Pods to specific CPU architectures. Common architectures are amd64 and arm64
-. Kubernetes nodes expose `kubernetes.io/arch`
-. Use nodeSelector or node group affinity to select node
+Architecture affinity places Pods onto nodes with a specific CPU architecture or hardware architecture using 
+- node affinity,
+- selectors, 
+- taints/tolerations, or 
+- topology constraints
 
+Common architectures are `amd64` and `arm64`
+- Kubernetes nodes expose `kubernetes.io/arch`
+- Use nodeSelector or node group affinity to select node
 
 ### Taints + Tolerations
 
