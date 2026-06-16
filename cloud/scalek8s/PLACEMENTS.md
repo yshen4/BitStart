@@ -59,6 +59,22 @@ In production setup, we combine all tools to optimize placement:
 
 NodeSelector is the simplest scheduling constraint, which is based on the label (defined on the node) and nodeSelector (defined in the pod deployment yaml). The Pod will ONLY be scheduled and run on nodes matching that label.
 
+This example shows an application pod placed to nodes with arm64 architecture using label `kubernetes.io/arch`:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: arm-app
+spec:
+  nodeSelector:
+    kubernetes.io/arch: arm64
+
+  containers:
+  - name: app
+    image: mycompany/app:latest
+```
+
 ### Node group affinity
 
 This tool uses `Node Affinity` against labels representing node groups, which is more flexible than nodeSelector. There are 2 types:
